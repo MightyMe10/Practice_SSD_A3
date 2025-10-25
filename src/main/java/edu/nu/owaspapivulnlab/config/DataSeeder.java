@@ -9,6 +9,8 @@ import edu.nu.owaspapivulnlab.repo.AccountRepository;
 import edu.nu.owaspapivulnlab.repo.AppUserRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.math.BigDecimal;
+
 @Configuration
 public class DataSeeder {
     @Bean
@@ -29,8 +31,16 @@ public class DataSeeder {
                         .role("ADMIN")
                         .isAdmin(true)
                         .build());
-                accounts.save(Account.builder().ownerUserId(u1.getId()).iban("PK00-ALICE").balance(1000.0).build());
-                accounts.save(Account.builder().ownerUserId(u2.getId()).iban("PK00-BOB").balance(5000.0).build());
+                accounts.save(Account.builder()
+                        .ownerUserId(u1.getId())
+                        .iban("PK00-ALICE")
+                        .balance(new BigDecimal("1000.00"))
+                        .build());
+                accounts.save(Account.builder()
+                        .ownerUserId(u2.getId())
+                        .iban("PK00-BOB")
+                        .balance(new BigDecimal("5000.00"))
+                        .build());
             }
         };
     }
