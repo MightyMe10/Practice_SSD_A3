@@ -10,7 +10,8 @@ This branch starts from the intentionally vulnerable lab and layers the ten requ
 | 4. Stop excessive data exposure     | ✅ Implemented in commit 4 | User endpoints now respond with DTOs—no passwords, roles, or admin flags leak out.    |
 | 5. Rate limit auth & transfers      | ✅ Implemented in commit 5 | Login attempts throttle per IP/user; transfers limited per owner to foil brute force. |
 | 6. Block mass assignment            | ✅ Implemented in commit 6 | `/api/users` now binds to a safe DTO and enforces server-side role defaults.          |
-| 7–10                                | ⏳ Pending                 | Will be added in later commits.                                                       |
+| 7. Harden JWT validation            | ✅ Implemented in commit 7 | Tokens enforce issuer/audience and reject tampering with `invalid_token` responses.   |
+| 8–10                                | ⏳ Pending                 | Will be added in later commits.                                                       |
 
 ## Running the Application
 

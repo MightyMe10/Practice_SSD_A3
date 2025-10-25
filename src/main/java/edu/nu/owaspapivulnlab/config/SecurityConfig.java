@@ -1,10 +1,12 @@
 package edu.nu.owaspapivulnlab.config;
 
+import edu.nu.owaspapivulnlab.service.JwtService;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -19,7 +21,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.lang.NonNull;
 import org.springframework.web.filter.OncePerRequestFilter;
-import io.jsonwebtoken.*;
 
 import java.io.IOException;
 import java.util.Collections;
@@ -27,16 +28,13 @@ import java.util.Collections;
 @Configuration
 public class SecurityConfig {
 
-    @Value("${app.jwt.secret}")
-    private String secret;
-
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain filterChain(HttpSecurity http, JwtService jwtService) throws Exception {
         http.csrf(csrf -> csrf.disable());
         http.sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
         http.exceptionHandling(eh -> eh
@@ -60,33 +58,38 @@ public class SecurityConfig {
         );
 
         http.cors(cors -> {});
-        http.addFilterBefore(new JwtFilter(secret), org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class);
+        http.addFilterBefore(new JwtFilter(jwtService), org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 
-    // Minimal JWT filter (VULNERABILITY: weak validation - no audience, issuer checks; long TTL)
     static class JwtFilter extends OncePerRequestFilter {
-        private final String secret;
-        JwtFilter(String secret) { this.secret = secret; }
+        private final JwtService jwtService;
+
+        JwtFilter(JwtService jwtService) {
+            this.jwtService = jwtService;
+        }
 
         @Override
-    protected void doFilterInternal(@NonNull HttpServletRequest request,
-                    @NonNull HttpServletResponse response,
-                    @NonNull FilterChain chain)
+        protected void doFilterInternal(@NonNull HttpServletRequest request,
+                                        @NonNull HttpServletResponse response,
+                                        @NonNull FilterChain chain)
                 throws ServletException, IOException {
             String auth = request.getHeader("Authorization");
             if (auth != null && auth.startsWith("Bearer ")) {
                 String token = auth.substring(7);
                 try {
-                    Claims c = Jwts.parserBuilder().setSigningKey(secret.getBytes()).build()
-                            .parseClaimsJws(token).getBody();
-                    String user = c.getSubject();
-                    String role = (String) c.get("role");
+                    Claims claims = jwtService.parseAndValidate(token);
+                    String user = claims.getSubject();
+                    String role = claims.get("role", String.class);
                     UsernamePasswordAuthenticationToken authn = new UsernamePasswordAuthenticationToken(user, null,
                             role != null ? Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + role)) : Collections.emptyList());
                     SecurityContextHolder.getContext().setAuthentication(authn);
                 } catch (JwtException e) {
-                    // VULNERABILITY: swallow errors; continue as anonymous (API7)
+                    SecurityContextHolder.clearContext();
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                    response.getWriter().write("{\"error\":\"invalid_token\"}");
+                    return;
                 }
             }
             chain.doFilter(request, response);
