@@ -8,7 +8,8 @@ This branch starts from the intentionally vulnerable lab and layers the ten requ
 | 2. Enforce authentication defaults  | ✅ Implemented in commit 2 | All API routes now require auth (except login/signup/health) and return JSON 401/403. |
 | 3. Enforce account ownership        | ✅ Implemented in commit 3 | Service layer verifies ownership, BigDecimal balances prevent rounding exploits.      |
 | 4. Stop excessive data exposure     | ✅ Implemented in commit 4 | User endpoints now respond with DTOs—no passwords, roles, or admin flags leak out.    |
-| 5–10                                | ⏳ Pending                 | Will be added in later commits.                                                       |
+| 5. Rate limit auth & transfers      | ✅ Implemented in commit 5 | Login attempts throttle per IP/user; transfers limited per owner to foil brute force. |
+| 6–10                                | ⏳ Pending                 | Will be added in later commits.                                                       |
 
 ## Running the Application
 
@@ -101,4 +102,35 @@ curl.exe -s -X POST http://localhost:9090/api/auth/login `
   # objects only contain id/username/email even without auth checks yet
   ```
 
-Further sections documenting fixes 5–10 will be appended as those commits land.
+## Verification Commands (Fix 5)
+
+- Invalid login bursts now trigger 429 responses:
+
+  ```powershell
+  for ($i = 0; $i -lt 5; $i++) {
+    curl.exe -s -X POST http://localhost:9090/api/auth/login `
+      -H "Content-Type: application/json" `
+      -d "{\"username\":\"alice\",\"password\":\"bad\"}"
+  }
+  curl.exe -i -X POST http://localhost:9090/api/auth/login `
+    -H "Content-Type: application/json" `
+    -d "{\"username\":\"alice\",\"password\":\"bad\"}"
+  # -> HTTP/1.1 429 Too Many Requests
+  ```
+
+- Transfer spam is blocked after five quick calls per user:
+
+  ```powershell
+  $aliceToken = (curl.exe -s -X POST http://localhost:9090/api/auth/login `
+    -H "Content-Type: application/json" `
+    -d "{\"username\":\"alice\",\"password\":\"alice123\"}" | ConvertFrom-Json).token
+  for ($i = 0; $i -lt 5; $i++) {
+    curl.exe -s -X POST "http://localhost:9090/api/accounts/1/transfer?amount=1" `
+      -H "Authorization: Bearer $aliceToken"
+  }
+  curl.exe -i -X POST "http://localhost:9090/api/accounts/1/transfer?amount=1" `
+    -H "Authorization: Bearer $aliceToken"
+  # -> HTTP/1.1 429 Too Many Requests
+  ```
+
+Further sections documenting fixes 6–10 will be appended as those commits land.

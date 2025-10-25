@@ -3,12 +3,15 @@ package edu.nu.owaspapivulnlab;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+
+import edu.nu.owaspapivulnlab.service.RateLimiterService;
 
 import static org.hamcrest.Matchers.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -20,6 +23,12 @@ class AdditionalSecurityExpectationsTests {
 
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper om;
+    @Autowired RateLimiterService rateLimiter;
+
+    @BeforeEach
+    void resetRateLimiter() {
+        rateLimiter.reset();
+    }
 
     String login(String user, String pw) throws Exception {
         String res = mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
@@ -79,5 +88,38 @@ class AdditionalSecurityExpectationsTests {
     mvc.perform(get("/api/accounts/2/balance")
             .header("Authorization", "Bearer " + alice))
                 .andExpect(status().isForbidden()); // Fails now
+    }
+
+    @Test
+    void login_attempts_are_rate_limited() throws Exception {
+        for (int i = 0; i < 5; i++) {
+            mvc.perform(post("/api/auth/login")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"username\":\"alice\",\"password\":\"bad\"}"))
+                    .andExpect(status().isUnauthorized());
+        }
+
+        mvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"alice\",\"password\":\"bad\"}"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.error", is("rate_limit_exceeded")));
+    }
+
+    @Test
+    void transfers_are_rate_limited_per_user() throws Exception {
+        String alice = login("alice", "alice123");
+        for (int i = 0; i < 5; i++) {
+            mvc.perform(post("/api/accounts/1/transfer")
+                            .header("Authorization", "Bearer " + alice)
+                            .param("amount", "1"))
+                    .andExpect(status().isOk());
+        }
+
+        mvc.perform(post("/api/accounts/1/transfer")
+                        .header("Authorization", "Bearer " + alice)
+                        .param("amount", "1"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.error", is("rate_limit_exceeded")));
     }
 }

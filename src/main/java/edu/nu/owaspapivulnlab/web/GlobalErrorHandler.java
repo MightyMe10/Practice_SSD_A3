@@ -1,5 +1,6 @@
 package edu.nu.owaspapivulnlab.web;
 
+import edu.nu.owaspapivulnlab.service.exception.RateLimitExceededException;
 import edu.nu.owaspapivulnlab.service.exception.ResourceNotFoundException;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
@@ -38,6 +39,14 @@ public class GlobalErrorHandler {
         errorMap.put("error", "not_found");
         errorMap.put("message", e.getMessage());
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorMap);
+    }
+
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ResponseEntity<?> tooManyRequests(RateLimitExceededException e) {
+        Map<String, String> errorMap = new HashMap<>();
+        errorMap.put("error", "rate_limit_exceeded");
+        errorMap.put("message", e.getMessage());
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(errorMap);
     }
 
     @ExceptionHandler(DataAccessException.class)

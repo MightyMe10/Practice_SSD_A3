@@ -17,9 +17,11 @@ import java.util.stream.Collectors;
 public class AccountService {
 
     private final AccountRepository accounts;
+    private final RateLimiterService rateLimiter;
 
-    public AccountService(AccountRepository accounts) {
+    public AccountService(AccountRepository accounts, RateLimiterService rateLimiter) {
         this.accounts = accounts;
+        this.rateLimiter = rateLimiter;
     }
 
     @Transactional(readOnly = true)
@@ -32,6 +34,7 @@ public class AccountService {
 
     @Transactional
     public AccountResponse transfer(Long id, BigDecimal amount, AppUser currentUser) {
+        rateLimiter.checkTransferForUser(currentUser.getId());
         Account account = accounts.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Account not found"));
         enforceOwnership(account, currentUser);
