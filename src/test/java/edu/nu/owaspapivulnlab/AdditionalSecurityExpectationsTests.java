@@ -73,24 +73,24 @@ class AdditionalSecurityExpectationsTests {
 
     @Test
     void jwt_must_be_valid_and_aud_iss_checked() throws Exception {
-    String valid = login("alice", "alice123");
-    mvc.perform(get("/api/accounts/mine")
-            .header("Authorization", "Bearer " + valid))
-        .andExpect(status().isOk());
+        String valid = login("alice", "alice123");
+        mvc.perform(get("/api/accounts/mine")
+                        .header("Authorization", "Bearer " + valid))
+                .andExpect(status().isOk());
 
-    String tampered = valid.substring(0, valid.length() - 2) + "aa";
-    mvc.perform(get("/api/accounts/mine")
-            .header("Authorization", "Bearer " + tampered))
-        .andExpect(status().isUnauthorized())
-        .andExpect(jsonPath("$.error", is("invalid_token")));
+        String tampered = valid.substring(0, valid.length() - 2) + "aa";
+        mvc.perform(get("/api/accounts/mine")
+                        .header("Authorization", "Bearer " + tampered))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code", is("invalid_token")));
     }
 
     @Test
     void account_owner_only_access() throws Exception {
-    String alice = login("alice", "alice123");
+        String alice = login("alice", "alice123");
         // In fixed code this should be forbidden
-    mvc.perform(get("/api/accounts/2/balance")
-            .header("Authorization", "Bearer " + alice))
+        mvc.perform(get("/api/accounts/2/balance")
+                        .header("Authorization", "Bearer " + alice))
                 .andExpect(status().isForbidden()); // Fails now
     }
 
@@ -107,7 +107,7 @@ class AdditionalSecurityExpectationsTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"username\":\"alice\",\"password\":\"bad\"}"))
                 .andExpect(status().isTooManyRequests())
-                .andExpect(jsonPath("$.error", is("rate_limit_exceeded")));
+                .andExpect(jsonPath("$.code", is("rate_limit_exceeded")));
     }
 
     @Test
@@ -124,6 +124,6 @@ class AdditionalSecurityExpectationsTests {
                         .header("Authorization", "Bearer " + alice)
                         .param("amount", "1"))
                 .andExpect(status().isTooManyRequests())
-                .andExpect(jsonPath("$.error", is("rate_limit_exceeded")));
+                .andExpect(jsonPath("$.code", is("rate_limit_exceeded")));
     }
 }

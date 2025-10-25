@@ -11,7 +11,8 @@ This branch starts from the intentionally vulnerable lab and layers the ten requ
 | 5. Rate limit auth & transfers      | ✅ Implemented in commit 5 | Login attempts throttle per IP/user; transfers limited per owner to foil brute force. |
 | 6. Block mass assignment            | ✅ Implemented in commit 6 | `/api/users` now binds to a safe DTO and enforces server-side role defaults.          |
 | 7. Harden JWT validation            | ✅ Implemented in commit 7 | Tokens enforce issuer/audience and reject tampering with `invalid_token` responses.   |
-| 8–10                                | ⏳ Pending                 | Will be added in later commits.                                                       |
+| 8. Tame error responses             | ✅ Implemented in commit 8 | Central handler returns stable `code` values without leaking stack traces or classes. |
+| 9–10                                | ⏳ Pending                 | Will be added in later commits.                                                       |
 
 ## Running the Application
 
@@ -118,11 +119,12 @@ curl.exe -s -X POST http://localhost:9090/api/auth/login `
     -H "Content-Type: application/json" `
     -d "{\"username\":\"alice\",\"password\":\"bad\"}"
   # -> HTTP/1.1 429 Too Many Requests
+  # -> {"code":"rate_limit_exceeded",...}
   ```
 
 - Transfer spam is blocked after five quick calls per user:
 
-  ````powershell
+  ```powershell
   $aliceToken = (curl.exe -s -X POST http://localhost:9090/api/auth/login `
     -H "Content-Type: application/json" `
     -d "{\"username\":\"alice\",\"password\":\"alice123\"}" | ConvertFrom-Json).token
@@ -131,33 +133,69 @@ curl.exe -s -X POST http://localhost:9090/api/auth/login `
       -H "Authorization: Bearer $aliceToken"
   }
   curl.exe -i -X POST "http://localhost:9090/api/accounts/1/transfer?amount=1" `
-
-  ## Verification Commands (Fix 6)
-
-  - Mass assignment no longer grants admin powers:
-
-    ```powershell
-    curl.exe -i -X POST http://localhost:9090/api/users `
-      -H "Content-Type: application/json" `
-      -d '{"username":"mallory","password":"pass12345","email":"mallory@example.com","role":"ADMIN","isAdmin":true}'
-    # -> HTTP/1.1 201 Created
-    # -> {"id":...,"username":"mallory","email":"mallory@example.com"}
-  ````
-
-  - The new user is created as a regular user despite the attempted escalation:
-
-    ```powershell
-    $mallory = curl.exe -s http://localhost:9090/api/users | ConvertFrom-Json | Where-Object { $_.username -eq "mallory" }
-    $mallory.isAdmin
-    # -> null (field omitted)
-    ```
-
     -H "Authorization: Bearer $aliceToken"
-
   # -> HTTP/1.1 429 Too Many Requests
-
+  # -> {"code":"rate_limit_exceeded",...}
   ```
 
+## Verification Commands (Fix 6)
+
+- Mass assignment no longer grants admin powers:
+
+  ```powershell
+  curl.exe -i -X POST http://localhost:9090/api/users `
+    -H "Content-Type: application/json" `
+    -d '{"username":"mallory","password":"pass12345","email":"mallory@example.com","role":"ADMIN","isAdmin":true}'
+  # -> HTTP/1.1 201 Created
+  # -> {"id":...,"username":"mallory","email":"mallory@example.com"}
   ```
 
-Further sections documenting fixes 6–10 will be appended as those commits land.
+- The new user is created as a regular user despite the attempted escalation:
+
+  ```powershell
+  $mallory = curl.exe -s http://localhost:9090/api/users | ConvertFrom-Json | Where-Object { $_.username -eq "mallory" }
+  $mallory.isAdmin
+  # -> null (field omitted)
+  ```
+
+## Verification Commands (Fix 7)
+
+- Valid tokens include issuer/audience and pass the filter:
+
+  ```powershell
+  $token = (curl.exe -s -X POST http://localhost:9090/api/auth/login `
+    -H "Content-Type: application/json" `
+    -d '{"username":"alice","password":"alice123"}' | ConvertFrom-Json).token
+  curl.exe -s -H "Authorization: Bearer $token" http://localhost:9090/api/accounts/mine
+  ```
+
+- Tampered tokens are rejected with a 401 and `invalid_token` payload:
+
+  ```powershell
+  $bad = $token.Substring(0, $token.Length - 2) + "aa"
+  curl.exe -i -H "Authorization: Bearer $bad" http://localhost:9090/api/accounts/mine
+  # -> HTTP/1.1 401 Unauthorized
+  # -> {"code":"invalid_token"}
+  ```
+
+## Verification Commands (Fix 8)
+
+- Missing resources return a 404 with a stable error code and no stack trace:
+
+  ```powershell
+  curl.exe -i -H "Authorization: Bearer $token" http://localhost:9090/api/accounts/999/balance
+  # -> HTTP/1.1 404 Not Found
+  # -> {"code":"resource_not_found",...}
+  ```
+
+- Validation failures respond with succinct details instead of exception dumps:
+
+  ```powershell
+  curl.exe -i -X POST http://localhost:9090/api/auth/signup `
+    -H "Content-Type: application/json" `
+    -d '{"username":"ed","password":"short","email":"bad-email"}'
+  # -> HTTP/1.1 400 Bad Request
+  # -> {"code":"validation_error","errors":{...}}
+  ```
+
+Further sections documenting fixes 9–10 will be appended as those commits land.

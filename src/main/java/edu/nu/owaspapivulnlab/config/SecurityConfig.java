@@ -88,7 +88,7 @@ public class SecurityConfig {
                     SecurityContextHolder.clearContext();
                     response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                     response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-                    response.getWriter().write("{\"error\":\"invalid_token\"}");
+                    response.getWriter().write("{\"code\":\"invalid_token\"}");
                     return;
                 }
             }
