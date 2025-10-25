@@ -1,57 +1,234 @@
-# OWASP API Vulnerable Lab (Spring Boot + JWT)
+# OWASP API Hardening Journey
 
-> This project intentionally contains vulnerabilities mapped to **OWASP API Security Top 10 (2023)** 
-> so students can identify and fix them.
+This branch starts from the intentionally vulnerable lab and layers the ten requested fixes one commit at a time. The table below is updated after every step so reviewers can see which mitigations are already present.
 
-## Quick Start
+| Requirement                         | Status                     | Notes                                                                                 |
+| ----------------------------------- | -------------------------- | ------------------------------------------------------------------------------------- |
+| 1. Hash passwords & add signup flow | ✅ Implemented in commit 1 | BCrypt replaces plaintext storage, a signup endpoint provisions new users safely.     |
+| 2. Enforce authentication defaults  | ✅ Implemented in commit 2 | All API routes now require auth (except login/signup/health) and return JSON 401/403. |
+| 3. Enforce account ownership        | ✅ Implemented in commit 3 | Service layer verifies ownership, BigDecimal balances prevent rounding exploits.      |
+| 4. Stop excessive data exposure     | ✅ Implemented in commit 4 | User endpoints now respond with DTOs—no passwords, roles, or admin flags leak out.    |
+| 5. Rate limit auth & transfers      | ✅ Implemented in commit 5 | Login attempts throttle per IP/user; transfers limited per owner to foil brute force. |
+| 6. Block mass assignment            | ✅ Implemented in commit 6 | `/api/users` now binds to a safe DTO and enforces server-side role defaults.          |
+| 7. Harden JWT validation            | ✅ Implemented in commit 7 | Tokens enforce issuer/audience and reject tampering with `invalid_token` responses.   |
+| 8. Tame error responses             | ✅ Implemented in commit 8 | Central handler returns stable `code` values without leaking stack traces or classes. |
+| 9. Validate transfer inputs         | ✅ Implemented in commit 9 | Transfers reject negative, over-limit, or overdraft amounts with 400 responses.       |
+| 10                                  | ⏳ Pending                 | Will be added in later commits.                                                       |
 
-```bash
-# Java 17 + Maven required
-mvn spring-boot:run
-# H2 Console: http://localhost:8080/h2-console (JDBC URL: jdbc:h2:mem:apilab)
+## Running the Application
+
+```powershell
+mvn spring-boot:run -Dspring-boot.run.arguments="--server.port=9090"
 ```
 
-## Seed Users
+The samples below assume port 9090—adjust if you run on a different port.
 
-- `alice / alice123` (USER)
-- `bob / bob123` (ADMIN)
+Seeded credentials now use BCrypt hashes:
 
-Login to get a JWT:
-```bash
-curl -s -X POST http://localhost:8080/api/auth/login -H 'Content-Type: application/json' -d '{"username":"alice","password":"alice123"}'
-# => {"token":"<JWT>"}
+```powershell
+curl.exe -s -X POST http://localhost:9090/api/auth/login `
+	-H "Content-Type: application/json" `
+	-d "{\"username\":\"alice\",\"password\":\"alice123\"}"
 ```
 
-Use the token:
-```bash
-export T="<JWT>"
-curl -H "Authorization: Bearer $T" http://localhost:8080/api/accounts/mine
-```
+## Verification Commands (Fix 1)
 
-## Intentional Vulnerabilities
+- Passwords are no longer readable from the database because they are stored using BCrypt.
+- New users can sign up via:
 
-- **API1: Broken Object Level Authorization (BOLA/IDOR)**
-- **API2: Broken Authentication**
-- **API3: Excessive Data Exposure**
-- **API4: Unrestricted Resource Consumption**
-- **API5: Broken Function Level Authorization**
-- **API6: Mass Assignment**
-- **API7: Security Misconfiguration**
-- **API8: Weak Authentication / JWT issues**
-- **API9: Improper Inventory / Injection-like search**
-- **API10: Unsafe Consumption of APIs** (discussion prompt)
+  ```powershell
+  curl.exe -s -X POST http://localhost:9090/api/auth/signup `
+  	-H "Content-Type: application/json" `
+  	-d "{\"username\":\"charlie\",\"password\":\"charliePass1\",\"email\":\"charlie@example.com\"}"
+  ```
 
-## Student Tasks (Fixes)
-1. Replace plaintext passwords with BCrypt; add signup flow and migrate existing seeds.
-2. Tighten `SecurityFilterChain`: remove `permitAll` on `/api/**`, require auth; enforce role checks.
-3. In controllers, enforce ownership: user can only access their own resources (map subject -> userId).
-4. Implement DTOs to control data exposure; never return password, role, or admin flags.
-5. Add rate limiting (Bucket4j/Resilience4j) to sensitive endpoints.
-6. Prevent Mass Assignment: use explicit request DTOs without `role`, `isAdmin` or validate them server-side.
-7. Harden JWT: strong key from env, short TTL, add issuer/audience, validate signature & expiry strictly.
-8. Reduce error detail in production; proper exception mapping and logging.
-9. Add input validation; reject negative or huge transfers.
-10. Add integration tests to capture fixed behavior.
+  The response returns the created user without exposing the hashed password.
 
-## Notes
-- Keep a list of fixes and submit a PR describing how each vulnerability was addressed.
+## Verification Commands (Fix 2)
+
+- Unauthenticated requests now fail fast:
+
+  ```powershell
+  curl.exe http://localhost:9090/api/accounts/mine
+  # -> {"error":"unauthorized"}
+  ```
+
+- Authenticated requests still succeed:
+
+  ```powershell
+  $token = curl.exe -s -X POST http://localhost:9090/api/auth/login `
+    -H "Content-Type: application/json" `
+    -d "{\"username\":\"alice\",\"password\":\"alice123\"}" | ConvertFrom-Json
+  curl.exe -H "Authorization: Bearer $($token.token)" http://localhost:9090/api/accounts/mine
+  ```
+
+## Verification Commands (Fix 3)
+
+- Alice only sees her own accounts:
+
+  ```powershell
+  $aliceToken = (curl.exe -s -X POST http://localhost:9090/api/auth/login `
+    -H "Content-Type: application/json" `
+    -d "{\"username\":\"alice\",\"password\":\"alice123\"}" | ConvertFrom-Json).token
+  curl.exe -s -H "Authorization: Bearer $aliceToken" http://localhost:9090/api/accounts/mine
+  # -> [{"id":1,"iban":"PK00-ALICE","balance":1000.00}]
+  ```
+
+- Alice cannot read Bob's balance (403):
+
+  ```powershell
+  curl.exe -i -H "Authorization: Bearer $aliceToken" http://localhost:9090/api/accounts/2/balance
+  # -> HTTP/1.1 403 Forbidden
+  ```
+
+- Admin Bob can inspect any account:
+
+  ```powershell
+  $bobToken = (curl.exe -s -X POST http://localhost:9090/api/auth/login `
+    -H "Content-Type: application/json" `
+    -d "{\"username\":\"bob\",\"password\":\"bob123\"}" | ConvertFrom-Json).token
+  curl.exe -s -H "Authorization: Bearer $bobToken" http://localhost:9090/api/accounts/1/balance
+  ```
+
+## Verification Commands (Fix 4)
+
+- User lookups no longer leak password hashes or admin flags:
+
+  ```powershell
+  curl.exe -s http://localhost:9090/api/users/1
+  # -> {"id":1,"username":"alice","email":"alice@cydea.tech"}
+  ```
+
+- Bulk user listings are similarly trimmed to safe fields:
+
+  ```powershell
+  curl.exe -s http://localhost:9090/api/users | ConvertFrom-Json
+  # objects only contain id/username/email even without auth checks yet
+  ```
+
+## Verification Commands (Fix 5)
+
+- Invalid login bursts now trigger 429 responses:
+
+  ```powershell
+  for ($i = 0; $i -lt 5; $i++) {
+    curl.exe -s -X POST http://localhost:9090/api/auth/login `
+      -H "Content-Type: application/json" `
+      -d "{\"username\":\"alice\",\"password\":\"bad\"}"
+  }
+  curl.exe -i -X POST http://localhost:9090/api/auth/login `
+    -H "Content-Type: application/json" `
+    -d "{\"username\":\"alice\",\"password\":\"bad\"}"
+  # -> HTTP/1.1 429 Too Many Requests
+  # -> {"code":"rate_limit_exceeded",...}
+  ```
+
+- Transfer spam is blocked after five quick calls per user:
+
+  ```powershell
+  $aliceToken = (curl.exe -s -X POST http://localhost:9090/api/auth/login `
+    -H "Content-Type: application/json" `
+    -d "{\"username\":\"alice\",\"password\":\"alice123\"}" | ConvertFrom-Json).token
+  for ($i = 0; $i -lt 5; $i++) {
+    curl.exe -s -X POST "http://localhost:9090/api/accounts/1/transfer?amount=1" `
+      -H "Authorization: Bearer $aliceToken"
+  }
+  curl.exe -i -X POST "http://localhost:9090/api/accounts/1/transfer?amount=1" `
+    -H "Authorization: Bearer $aliceToken"
+  # -> HTTP/1.1 429 Too Many Requests
+  # -> {"code":"rate_limit_exceeded",...}
+  ```
+
+## Verification Commands (Fix 6)
+
+- Mass assignment no longer grants admin powers:
+
+  ```powershell
+  curl.exe -i -X POST http://localhost:9090/api/users `
+    -H "Content-Type: application/json" `
+    -d '{"username":"mallory","password":"pass12345","email":"mallory@example.com","role":"ADMIN","isAdmin":true}'
+  # -> HTTP/1.1 201 Created
+  # -> {"id":...,"username":"mallory","email":"mallory@example.com"}
+  ```
+
+- The new user is created as a regular user despite the attempted escalation:
+
+  ```powershell
+  $mallory = curl.exe -s http://localhost:9090/api/users | ConvertFrom-Json | Where-Object { $_.username -eq "mallory" }
+  $mallory.isAdmin
+  # -> null (field omitted)
+  ```
+
+## Verification Commands (Fix 7)
+
+- Valid tokens include issuer/audience and pass the filter:
+
+  ```powershell
+  $token = (curl.exe -s -X POST http://localhost:9090/api/auth/login `
+    -H "Content-Type: application/json" `
+    -d '{"username":"alice","password":"alice123"}' | ConvertFrom-Json).token
+  curl.exe -s -H "Authorization: Bearer $token" http://localhost:9090/api/accounts/mine
+  ```
+
+- Tampered tokens are rejected with a 401 and `invalid_token` payload:
+
+  ```powershell
+  $bad = $token.Substring(0, $token.Length - 2) + "aa"
+  curl.exe -i -H "Authorization: Bearer $bad" http://localhost:9090/api/accounts/mine
+  # -> HTTP/1.1 401 Unauthorized
+  # -> {"code":"invalid_token"}
+  ```
+
+## Verification Commands (Fix 8)
+
+- Missing resources return a 404 with a stable error code and no stack trace:
+
+  ```powershell
+  curl.exe -i -H "Authorization: Bearer $token" http://localhost:9090/api/accounts/999/balance
+  # -> HTTP/1.1 404 Not Found
+  # -> {"code":"resource_not_found",...}
+  ```
+
+- Validation failures respond with succinct details instead of exception dumps:
+
+  ```powershell
+  curl.exe -i -X POST http://localhost:9090/api/auth/signup `
+    -H "Content-Type: application/json" `
+    -d '{"username":"ed","password":"short","email":"bad-email"}'
+  # -> HTTP/1.1 400 Bad Request
+  # -> {"code":"validation_error","errors":{...}}
+  ```
+
+## Verification Commands (Fix 9)
+
+- Negative transfers are rejected during validation:
+
+  ```powershell
+  $token = (curl.exe -s -X POST http://localhost:9090/api/auth/login `
+    -H "Content-Type: application/json" `
+    -d '{"username":"alice","password":"alice123"}' | ConvertFrom-Json).token
+  curl.exe -i -X POST "http://localhost:9090/api/accounts/1/transfer?amount=-5" `
+    -H "Authorization: Bearer $token"
+  # -> HTTP/1.1 400 Bad Request
+  # -> {"code":"validation_error",...}
+  ```
+
+- Oversized requests also fail fast:
+
+  ```powershell
+  curl.exe -i -X POST "http://localhost:9090/api/accounts/1/transfer?amount=25000" `
+    -H "Authorization: Bearer $token"
+  # -> HTTP/1.1 400 Bad Request
+  # -> {"code":"validation_error",...}
+  ```
+
+- Transfers cannot exceed the available balance:
+
+  ```powershell
+  curl.exe -i -X POST "http://localhost:9090/api/accounts/1/transfer?amount=1500" `
+    -H "Authorization: Bearer $token"
+  # -> HTTP/1.1 400 Bad Request
+  # -> {"code":"bad_request"}
+  ```
+
+Further sections documenting fix 10 will be appended as that commit lands.
