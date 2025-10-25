@@ -4,6 +4,11 @@ import edu.nu.owaspapivulnlab.dto.AccountResponse;
 import edu.nu.owaspapivulnlab.model.AppUser;
 import edu.nu.owaspapivulnlab.service.AccountService;
 import edu.nu.owaspapivulnlab.service.CurrentUserService;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
+import jakarta.validation.constraints.NotNull;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -16,6 +21,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/accounts")
+@Validated
 public class AccountController {
 
     private final AccountService accountService;
@@ -33,7 +39,13 @@ public class AccountController {
     }
 
     @PostMapping("/{id}/transfer")
-    public AccountResponse transfer(@PathVariable Long id, @RequestParam BigDecimal amount) {
+    public AccountResponse transfer(
+            @PathVariable Long id,
+            @RequestParam
+            @NotNull
+            @DecimalMin(value = "0.01")
+            @DecimalMax(value = "10000.00")
+            @Digits(integer = 8, fraction = 2) BigDecimal amount) {
         AppUser current = currentUserService.requireCurrentUser();
         return accountService.transfer(id, amount, current);
     }

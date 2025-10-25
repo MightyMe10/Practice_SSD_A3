@@ -126,4 +126,34 @@ class AdditionalSecurityExpectationsTests {
                 .andExpect(status().isTooManyRequests())
                 .andExpect(jsonPath("$.code", is("rate_limit_exceeded")));
     }
+
+    @Test
+    void negative_transfers_are_rejected() throws Exception {
+        String alice = login("alice", "alice123");
+        mvc.perform(post("/api/accounts/1/transfer")
+                        .header("Authorization", "Bearer " + alice)
+                        .param("amount", "-5"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code", is("validation_error")));
+    }
+
+    @Test
+    void huge_transfers_are_rejected() throws Exception {
+        String alice = login("alice", "alice123");
+        mvc.perform(post("/api/accounts/1/transfer")
+                        .header("Authorization", "Bearer " + alice)
+                        .param("amount", "25000"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code", is("validation_error")));
+    }
+
+    @Test
+    void transfers_cannot_exceed_balance() throws Exception {
+        String alice = login("alice", "alice123");
+        mvc.perform(post("/api/accounts/1/transfer")
+                        .header("Authorization", "Bearer " + alice)
+                        .param("amount", "1500"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code", is("bad_request")));
+    }
 }

@@ -16,6 +16,8 @@ import java.util.stream.Collectors;
 @Service
 public class AccountService {
 
+    private static final BigDecimal MAX_TRANSFER_AMOUNT = new BigDecimal("10000.00");
+
     private final AccountRepository accounts;
     private final RateLimiterService rateLimiter;
 
@@ -34,10 +36,19 @@ public class AccountService {
 
     @Transactional
     public AccountResponse transfer(Long id, BigDecimal amount, AppUser currentUser) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Transfer amount must be positive");
+        }
+        if (amount.compareTo(MAX_TRANSFER_AMOUNT) > 0) {
+            throw new IllegalArgumentException("Transfer amount exceeds the maximum allowed");
+        }
         rateLimiter.checkTransferForUser(currentUser.getId());
         Account account = accounts.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Account not found"));
         enforceOwnership(account, currentUser);
+        if (account.getBalance().compareTo(amount) < 0) {
+            throw new IllegalArgumentException("Insufficient funds for transfer");
+        }
         account.setBalance(account.getBalance().subtract(amount));
         accounts.save(account);
         return toResponse(account);

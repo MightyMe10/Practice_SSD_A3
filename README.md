@@ -12,7 +12,8 @@ This branch starts from the intentionally vulnerable lab and layers the ten requ
 | 6. Block mass assignment            | ✅ Implemented in commit 6 | `/api/users` now binds to a safe DTO and enforces server-side role defaults.          |
 | 7. Harden JWT validation            | ✅ Implemented in commit 7 | Tokens enforce issuer/audience and reject tampering with `invalid_token` responses.   |
 | 8. Tame error responses             | ✅ Implemented in commit 8 | Central handler returns stable `code` values without leaking stack traces or classes. |
-| 9–10                                | ⏳ Pending                 | Will be added in later commits.                                                       |
+| 9. Validate transfer inputs         | ✅ Implemented in commit 9 | Transfers reject negative, over-limit, or overdraft amounts with 400 responses.       |
+| 10                                  | ⏳ Pending                 | Will be added in later commits.                                                       |
 
 ## Running the Application
 
@@ -198,4 +199,36 @@ curl.exe -s -X POST http://localhost:9090/api/auth/login `
   # -> {"code":"validation_error","errors":{...}}
   ```
 
-Further sections documenting fixes 9–10 will be appended as those commits land.
+## Verification Commands (Fix 9)
+
+- Negative transfers are rejected during validation:
+
+  ```powershell
+  $token = (curl.exe -s -X POST http://localhost:9090/api/auth/login `
+    -H "Content-Type: application/json" `
+    -d '{"username":"alice","password":"alice123"}' | ConvertFrom-Json).token
+  curl.exe -i -X POST "http://localhost:9090/api/accounts/1/transfer?amount=-5" `
+    -H "Authorization: Bearer $token"
+  # -> HTTP/1.1 400 Bad Request
+  # -> {"code":"validation_error",...}
+  ```
+
+- Oversized requests also fail fast:
+
+  ```powershell
+  curl.exe -i -X POST "http://localhost:9090/api/accounts/1/transfer?amount=25000" `
+    -H "Authorization: Bearer $token"
+  # -> HTTP/1.1 400 Bad Request
+  # -> {"code":"validation_error",...}
+  ```
+
+- Transfers cannot exceed the available balance:
+
+  ```powershell
+  curl.exe -i -X POST "http://localhost:9090/api/accounts/1/transfer?amount=1500" `
+    -H "Authorization: Bearer $token"
+  # -> HTTP/1.1 400 Bad Request
+  # -> {"code":"bad_request"}
+  ```
+
+Further sections documenting fix 10 will be appended as that commit lands.
