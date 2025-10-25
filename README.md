@@ -13,7 +13,7 @@ This branch starts from the intentionally vulnerable lab and layers the ten requ
 | 7. Harden JWT validation            | ✅ Implemented in commit 7 | Tokens enforce issuer/audience and reject tampering with `invalid_token` responses.   |
 | 8. Tame error responses             | ✅ Implemented in commit 8 | Central handler returns stable `code` values without leaking stack traces or classes. |
 | 9. Validate transfer inputs         | ✅ Implemented in commit 9 | Transfers reject negative, over-limit, or overdraft amounts with 400 responses.       |
-| 10                                  | ⏳ Pending                 | Will be added in later commits.                                                       |
+| 10. Integration tests               | ✅ Implemented in commit 1 | Will be added in later commits.                                                       |
 
 ## Running the Application
 
@@ -231,4 +231,7 @@ curl.exe -s -X POST http://localhost:9090/api/auth/login `
   # -> {"code":"bad_request"}
   ```
 
-Further sections documenting fix 10 will be appended as that commit lands.
+## Verification Commands (Fix 10)
+- These have been integrated since commit 1 though they might fail until the final commit version since the security measures in totality are not implemented till then.
+  ```powershell
+  mvn test
