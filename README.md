@@ -7,7 +7,8 @@ This branch starts from the intentionally vulnerable lab and layers the ten requ
 | 1. Hash passwords & add signup flow | ✅ Implemented in commit 1 | BCrypt replaces plaintext storage, a signup endpoint provisions new users safely.     |
 | 2. Enforce authentication defaults  | ✅ Implemented in commit 2 | All API routes now require auth (except login/signup/health) and return JSON 401/403. |
 | 3. Enforce account ownership        | ✅ Implemented in commit 3 | Service layer verifies ownership, BigDecimal balances prevent rounding exploits.      |
-| 4–10                                | ⏳ Pending                 | Will be added in later commits.                                                       |
+| 4. Stop excessive data exposure     | ✅ Implemented in commit 4 | User endpoints now respond with DTOs—no passwords, roles, or admin flags leak out.    |
+| 5–10                                | ⏳ Pending                 | Will be added in later commits.                                                       |
 
 ## Running the Application
 
@@ -56,8 +57,6 @@ curl.exe -s -X POST http://localhost:9090/api/auth/login `
   curl.exe -H "Authorization: Bearer $($token.token)" http://localhost:9090/api/accounts/mine
   ```
 
-Further sections documenting fixes 4–10 will be appended as those commits land.
-
 ## Verification Commands (Fix 3)
 
 - Alice only sees her own accounts:
@@ -85,3 +84,21 @@ Further sections documenting fixes 4–10 will be appended as those commits land
     -d "{\"username\":\"bob\",\"password\":\"bob123\"}" | ConvertFrom-Json).token
   curl.exe -s -H "Authorization: Bearer $bobToken" http://localhost:9090/api/accounts/1/balance
   ```
+
+## Verification Commands (Fix 4)
+
+- User lookups no longer leak password hashes or admin flags:
+
+  ```powershell
+  curl.exe -s http://localhost:9090/api/users/1
+  # -> {"id":1,"username":"alice","email":"alice@cydea.tech"}
+  ```
+
+- Bulk user listings are similarly trimmed to safe fields:
+
+  ```powershell
+  curl.exe -s http://localhost:9090/api/users | ConvertFrom-Json
+  # objects only contain id/username/email even without auth checks yet
+  ```
+
+Further sections documenting fixes 5–10 will be appended as those commits land.
