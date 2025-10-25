@@ -53,7 +53,7 @@ public class SecurityConfig {
         );
 
         http.authorizeHttpRequests(reg -> reg
-                .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/signup").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/signup", "/api/users").permitAll()
                 .requestMatchers("/actuator/health").permitAll()
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 .anyRequest().authenticated()

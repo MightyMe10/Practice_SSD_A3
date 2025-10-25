@@ -9,7 +9,8 @@ This branch starts from the intentionally vulnerable lab and layers the ten requ
 | 3. Enforce account ownership        | ✅ Implemented in commit 3 | Service layer verifies ownership, BigDecimal balances prevent rounding exploits.      |
 | 4. Stop excessive data exposure     | ✅ Implemented in commit 4 | User endpoints now respond with DTOs—no passwords, roles, or admin flags leak out.    |
 | 5. Rate limit auth & transfers      | ✅ Implemented in commit 5 | Login attempts throttle per IP/user; transfers limited per owner to foil brute force. |
-| 6–10                                | ⏳ Pending                 | Will be added in later commits.                                                       |
+| 6. Block mass assignment            | ✅ Implemented in commit 6 | `/api/users` now binds to a safe DTO and enforces server-side role defaults.          |
+| 7–10                                | ⏳ Pending                 | Will be added in later commits.                                                       |
 
 ## Running the Application
 
@@ -120,7 +121,7 @@ curl.exe -s -X POST http://localhost:9090/api/auth/login `
 
 - Transfer spam is blocked after five quick calls per user:
 
-  ```powershell
+  ````powershell
   $aliceToken = (curl.exe -s -X POST http://localhost:9090/api/auth/login `
     -H "Content-Type: application/json" `
     -d "{\"username\":\"alice\",\"password\":\"alice123\"}" | ConvertFrom-Json).token
@@ -129,8 +130,33 @@ curl.exe -s -X POST http://localhost:9090/api/auth/login `
       -H "Authorization: Bearer $aliceToken"
   }
   curl.exe -i -X POST "http://localhost:9090/api/accounts/1/transfer?amount=1" `
+
+  ## Verification Commands (Fix 6)
+
+  - Mass assignment no longer grants admin powers:
+
+    ```powershell
+    curl.exe -i -X POST http://localhost:9090/api/users `
+      -H "Content-Type: application/json" `
+      -d '{"username":"mallory","password":"pass12345","email":"mallory@example.com","role":"ADMIN","isAdmin":true}'
+    # -> HTTP/1.1 201 Created
+    # -> {"id":...,"username":"mallory","email":"mallory@example.com"}
+  ````
+
+  - The new user is created as a regular user despite the attempted escalation:
+
+    ```powershell
+    $mallory = curl.exe -s http://localhost:9090/api/users | ConvertFrom-Json | Where-Object { $_.username -eq "mallory" }
+    $mallory.isAdmin
+    # -> null (field omitted)
+    ```
+
     -H "Authorization: Bearer $aliceToken"
+
   # -> HTTP/1.1 429 Too Many Requests
+
+  ```
+
   ```
 
 Further sections documenting fixes 6–10 will be appended as those commits land.
